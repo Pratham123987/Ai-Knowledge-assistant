@@ -1,0 +1,525 @@
+{
+  "name": "chat with citations",
+  "nodes": [
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ka-mvp-chat",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "6e2e159a-812a-4f75-bd53-02c7ab645895",
+      "name": "Webhook",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        704,
+        672
+      ],
+      "webhookId": "d9fc4ea9-bc5a-4c98-b454-1f9b9679152a"
+    },
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nconst input = raw.body ?? raw;\n\nconst message = String(input.message || '').trim();\n\nif (!message) {\n  throw new Error('body.message is required');\n}\n\nfunction uuidv4() {\n  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {\n    const r = Math.floor(Math.random() * 16);\n    const v = c === 'x' ? r : (r & 0x3 | 0x8);\n    return v.toString(16);\n  });\n}\n\nconst conversationId = input.conversation_id || uuidv4();\nconst documentIds = Array.isArray(input.document_ids)\n  ? input.document_ids.filter(Boolean)\n  : [];\n\nreturn [{\n  json: {\n    conversation_id: conversationId,\n    is_new_conversation: !input.conversation_id,\n    title: message.slice(0, 80),\n    message,\n    document_ids: documentIds,\n    top_k: Number(input.top_k || 6)\n  }\n}];"
+      },
+      "id": "c0d447f5-3e01-44f4-b952-ff441a073477",
+      "name": "Normalize Input",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        976,
+        672
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://rfuzcgprywihkahqbmee.supabase.co/rest/v1/conversations?on_conflict=id",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_API_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.SUPABASE_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "resolution=merge-duplicates,return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ id: $json.conversation_id, title: $json.title, metadata: { source: 'n8n-mvp' } }) }}",
+        "options": {}
+      },
+      "id": "2432e981-427e-4246-a4b9-546ea3700afe",
+      "name": "Upsert Conversation",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1264,
+        672
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://rfuzcgprywihkahqbmee.supabase.co/rest/v1/conversations?id=eq.' + $('Normalize Input').first().json.conversation_id + '&select=summary' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": " {{ $env.SUPABASE_API_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer  {{ $env.SUPABASE_API_KEY }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "cab04e93-4eed-4160-8178-c3d5f9b20430",
+      "name": "Get Conversation Summary",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1536,
+        528
+      ]
+    },
+    {
+      "parameters": {
+        "url": "={{ 'https://rfuzcgprywihkahqbmee.supabase.co/rest/v1/messages?conversation_id=eq.' + $('Normalize Input').first().json.conversation_id + '&select=role,content,citations,created_at&order=created_at.desc&limit=8' }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "{{ $env.SUPABASE_API_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.SUPABASE_API_KEY }}"
+            }
+          ]
+        },
+        "options": {}
+      },
+      "id": "26c54150-6ad2-4101-83ef-470cb7eba527",
+      "name": "Get Recent Messages",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1536,
+        816
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://rfuzcgprywihkahqbmee.supabase.co/rest/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "{{ $env.SUPABASE_API_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.SUPABASE_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\"conversation_id\":\"3cfb6ab6-a353-42b7-b607-5a2db52c1354\",\"role\":\"user\",\"content\":\"How many annual leave days are employees entitled to?\",\"citations\":[],\"tool_calls\":[]}",
+        "options": {}
+      },
+      "id": "53418bfa-69bb-40b7-9c58-8274857918e8",
+      "name": "Save User Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1824,
+        672
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-2:embedContent",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-goog-api-key",
+              "value": "={{ $env.GOOGLE_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={\n  \"model\": \"models/gemini-embedding-2\",\n  \"content\": {\n    \"parts\": [\n      {\n        \"text\": \"{{$('Normalize Input').first().json.message}}\"\n      }\n    ]\n  },\n  \"output_dimensionality\": 1536\n}",
+        "options": {}
+      },
+      "id": "c8d05420-1dea-4589-ac55-66d6945bb824",
+      "name": "Create Query Embedding",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2096,
+        672
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://rfuzcgprywihkahqbmee.supabase.co/rest/v1/rpc/match_chunks",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "{{ $env.SUPABASE_API_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.SUPABASE_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={\n  \"query_embedding\": \"{{ JSON.stringify($json.embedding.values) }}\",\n  \"match_count\": {{$('Normalize Input').first().json.top_k}},\n  \"filter_document_ids\": {{$('Normalize Input').first().json.document_ids.length ? JSON.stringify($('Normalize Input').first().json.document_ids) : 'null'}}\n}",
+        "options": {}
+      },
+      "id": "61c44c6e-f45c-4acf-9c76-34b898d53bc7",
+      "name": "Match Chunks",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2368,
+        672
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "function safeNodeJsons(nodeName) {\n  try {\n    const raw = $items(nodeName, 0, 0) || [];\n    if (!raw.length) return [];\n    if (raw.length === 1 && Array.isArray(raw[0].json)) return raw[0].json;\n    return raw.map(item => item.json);\n  } catch (error) {\n    return [];\n  }\n}\n\nconst sourceRows = safeNodeJsons('Match Chunks');\nconst recentRows = safeNodeJsons('Get Recent Messages');\nconst summaryRows = safeNodeJsons('Get Conversation Summary');\nconst input = $('Normalize Input').first().json;\n\nconst sources = sourceRows.map((row, i) => ({\n  source_id: `S${i + 1}`,\n  chunk_id: row.chunk_id,\n  document_id: row.document_id,\n  document_title: row.document_title,\n  file_name: row.file_name,\n  page_number: row.page_number,\n  quote: row.content,\n  source_type: 'knowledge_base',\n  similarity: row.similarity,\n}));\n\nconst summary = summaryRows[0]?.summary || '';\nconst history = recentRows.length\n  ? [...recentRows].reverse().map(m => `${m.role}: ${m.content}`).join('\\n')\n  : '';\n\nconst sourceBlock = sources.length\n  ? sources.map(s =>\n      `[${s.source_id}] ${s.document_title || s.file_name}${s.page_number ? ` | page ${s.page_number}` : ''}\\n${s.quote}`\n    ).join('\\n\\n')\n  : 'No knowledge base sources were retrieved.';\n\nconst prompt = `You are an AI knowledge assistant.\nAnswer only from the retrieved sources when possible.\nEvery factual statement must cite the exact source id like [S1].\nDo not invent citations.\nIf the answer is not in the sources, say that clearly.\n\nConversation summary:\n${summary || 'None'}\n\nRecent conversation:\n${history || 'None'}\n\nRetrieved sources:\n${sourceBlock}\n\nUser question:\n${input.message}`;\n\nreturn [{\n  json: {\n    conversation_id: input.conversation_id,\n    user_message: input.message,\n    prompt,\n    sources,\n  }\n}];"
+      },
+      "id": "0caa7f3e-ca95-44ec-bd51-f67412dfecc3",
+      "name": "Build Prompt + Sources",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2656,
+        672
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/openai/chat/completions",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.GOOGLE_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={\n  \"model\": \"gemini-2.5-flash\",\n  \"messages\": [\n    {\n      \"role\": \"user\",\n      \"content\": {{ JSON.stringify($('Build Prompt + Sources').first().json.prompt) }}\n    }\n  ],\n  \"temperature\": 0.2\n}",
+        "options": {}
+      },
+      "id": "6620373b-958e-46f1-a931-6f2e87f42858",
+      "name": "Generate Answer",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        2928,
+        672
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const answer = $json.choices?.[0]?.message?.content || 'I could not generate an answer.';\nconst sourcePattern = /\\[([A-Z]\\d+)\\]/g;\nconst sourceMap = new Map($('Build Prompt + Sources').first().json.sources.map(source => [source.source_id, source]));\nconst usedIds = [...new Set(Array.from(answer.matchAll(sourcePattern)).map(match => match[1]))];\nconst citations = usedIds.map(id => sourceMap.get(id)).filter(Boolean);\n\nreturn [{\n  json: {\n    conversation_id: $('Build Prompt + Sources').first().json.conversation_id,\n    answer,\n    citations,\n    sources: $('Build Prompt + Sources').first().json.sources\n  }\n}];"
+      },
+      "id": "a38b34d7-c6e4-46d6-b913-f709c8a5434a",
+      "name": "Extract Citations",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3216,
+        672
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://rfuzcgprywihkahqbmee.supabase.co/rest/v1/messages",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "{{ $env.SUPABASE_API_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.SUPABASE_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={   \"conversation_id\": \"{{$json.conversation_id}}\",   \"role\": \"assistant\",   \"content\": {{ JSON.stringify($json.answer) }},   \"citations\": {{ JSON.stringify($json.citations || []) }},   \"tool_calls\": [] }",
+        "options": {}
+      },
+      "id": "6e0253e2-8788-4ce8-9274-0e261cf9097e",
+      "name": "Save Assistant Message",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        3488,
+        672
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "956939ca-7ef0-4e0f-b277-de90595d447e",
+      "name": "Respond to Webhook",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        4048,
+        672
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const extracted = $('Extract Citations').first().json;\nreturn [{\n  json: {\n    conversation_id: extracted.conversation_id,\n    answer: extracted.answer,\n    citations: extracted.citations\n  }\n}];"
+      },
+      "id": "40a9ab7b-1f70-4d6c-9338-c970531c442e",
+      "name": "Format Response1",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        3776,
+        672
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Webhook": {
+      "main": [
+        [
+          {
+            "node": "Normalize Input",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Normalize Input": {
+      "main": [
+        [
+          {
+            "node": "Upsert Conversation",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Upsert Conversation": {
+      "main": [
+        [
+          {
+            "node": "Get Conversation Summary",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Save User Message",
+            "type": "main",
+            "index": 0
+          },
+          {
+            "node": "Get Recent Messages",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Get Conversation Summary": {
+      "main": [
+        []
+      ]
+    },
+    "Get Recent Messages": {
+      "main": [
+        []
+      ]
+    },
+    "Save User Message": {
+      "main": [
+        [
+          {
+            "node": "Create Query Embedding",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Query Embedding": {
+      "main": [
+        [
+          {
+            "node": "Match Chunks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Match Chunks": {
+      "main": [
+        [
+          {
+            "node": "Build Prompt + Sources",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Build Prompt + Sources": {
+      "main": [
+        [
+          {
+            "node": "Generate Answer",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Generate Answer": {
+      "main": [
+        [
+          {
+            "node": "Extract Citations",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Extract Citations": {
+      "main": [
+        [
+          {
+            "node": "Save Assistant Message",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Save Assistant Message": {
+      "main": [
+        [
+          {
+            "node": "Format Response1",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Response1": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": true,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "fda1143d-3165-4d0b-bd51-c5add74b4b52",
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": "f87bb745ef5a1514836c51902fae85c407513b5c7812234e511cae37061c8570",
+    "credentialsLocation": "Environment variables (.env file)",
+    "requiredEnvVars": [
+      "SUPABASE_API_KEY",
+      "GOOGLE_API_KEY"
+    ]
+  },
+  "nodeGroups": [],
+  "id": "2oBjWnfydOU8sp0L",
+  "tags": []
+}
+
+

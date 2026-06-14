@@ -1,0 +1,305 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Knowledge Assistant n8n Frontend</title>
+  <style>
+    :root {
+      --bg: #0b1020;
+      --panel: #121a31;
+      --soft: #16203b;
+      --border: #2a3555;
+      --text: #eef2ff;
+      --muted: #97a5c6;
+      --accent: #7094ff;
+      --ok: #34d399;
+      --warn: #fbbf24;
+      --bad: #fb7185;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: linear-gradient(180deg, #08101f 0%, #0d1428 100%);
+      color: var(--text);
+      font-family: Inter, Arial, sans-serif;
+    }
+    .wrap {
+      max-width: 1200px;
+      margin: 0 auto;
+      padding: 24px;
+      display: grid;
+      grid-template-columns: 360px 1fr;
+      gap: 20px;
+      min-height: 100vh;
+    }
+    .panel {
+      background: rgba(18, 26, 49, .92);
+      border: 1px solid var(--border);
+      border-radius: 18px;
+      padding: 18px;
+      box-shadow: 0 20px 60px rgba(0,0,0,.22);
+    }
+    .title { font-size: 24px; font-weight: 700; margin: 0 0 8px; }
+    .muted { color: var(--muted); line-height: 1.5; }
+    .input, .textarea, button {
+      width: 100%;
+      border-radius: 12px;
+      border: 1px solid var(--border);
+      background: #0e1730;
+      color: var(--text);
+      padding: 12px 14px;
+      font: inherit;
+    }
+    .textarea { min-height: 130px; resize: vertical; }
+    button {
+      background: linear-gradient(180deg, var(--accent) 0%, #5378f5 100%);
+      border: none;
+      cursor: pointer;
+      font-weight: 600;
+    }
+    button.secondary {
+      background: transparent;
+      border: 1px solid var(--border);
+    }
+    .stack { display: grid; gap: 12px; }
+    .section { margin-top: 20px; }
+    .pill {
+      display: inline-block;
+      padding: 4px 8px;
+      border-radius: 999px;
+      border: 1px solid var(--border);
+      color: var(--muted);
+      font-size: 12px;
+      margin-right: 8px;
+    }
+    .messages {
+      display: grid;
+      gap: 14px;
+      max-height: calc(100vh - 220px);
+      overflow: auto;
+      padding-right: 6px;
+    }
+    .msg {
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      padding: 14px;
+      background: #101830;
+    }
+    .msg.user { background: #182447; }
+    .head {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      color: var(--muted);
+      font-size: 12px;
+      margin-bottom: 8px;
+    }
+    .content { white-space: pre-wrap; line-height: 1.6; }
+    .citations {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      margin-top: 12px;
+    }
+    .citation {
+      max-width: 320px;
+      padding: 10px 12px;
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      background: #121d39;
+      color: var(--muted);
+      font-size: 13px;
+    }
+    .row { display: flex; gap: 10px; }
+    .status { padding: 10px 12px; border-radius: 12px; background: #101932; border: 1px solid var(--border); }
+    .ok { color: var(--ok); }
+    .bad { color: var(--bad); }
+    @media (max-width: 980px) {
+      .wrap { grid-template-columns: 1fr; }
+      .messages { max-height: none; }
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <div class="panel stack">
+      <div>
+        <h1 class="title">Knowledge Assistant</h1>
+        <div class="muted">Simple frontend for your n8n webhooks.</div>
+      </div>
+
+      <div class="section stack">
+        <label class="muted">Ingest Webhook URL</label>
+        <input id="ingestUrl" class="input" value="https://pratham0707.app.n8n.cloud/webhook/ka-mvp-ingest-text" />
+        <label class="muted">Chat Webhook URL</label>
+        <input id="chatUrl" class="input" value="https://pratham0707.app.n8n.cloud/webhook/ka-mvp-chat" />
+        <label class="muted">File Ingest Webhook URL (optional)</label>
+        <input id="fileIngestUrl" class="input" placeholder="https://your-n8n/webhook/ka-upgrade-ingest-file" />
+      </div>
+
+      <div class="section stack">
+        <div class="pill">1. Ingest text</div>
+        <input id="docTitle" class="input" placeholder="Document title" value="HR Policy" />
+        <input id="docFileName" class="input" placeholder="File name" value="hr-policy.txt" />
+        <textarea id="docText" class="textarea" placeholder="Paste full document text here">Employees are entitled to 20 days of annual leave. Sick leave requires manager notification. Remote work is allowed up to 3 days per week with approval.</textarea>
+        <button id="ingestBtn">Ingest Text Document</button>
+      </div>
+
+      <div class="section stack">
+        <div class="pill">2. Ingest PDF/file</div>
+        <input id="docFile" class="input" type="file" />
+        <button id="fileIngestBtn">Upload File/PDF</button>
+      </div>
+
+      <div class="section stack">
+        <div class="status" id="statusBox">Ready</div>
+      </div>
+    </div>
+
+    <div class="panel stack">
+      <div class="row">
+        <input id="conversationId" class="input" placeholder="Conversation ID (auto-filled after first chat)" />
+        <button id="clearBtn" class="secondary">New Chat</button>
+      </div>
+
+      <div id="messages" class="messages"></div>
+
+      <div class="section stack">
+        <textarea id="chatMessage" class="textarea" placeholder="Ask any question - powered by your knowledge base and the web…">How many annual leave days are employees entitled to?</textarea>
+        <button id="chatBtn">Send Message</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const els = {
+      ingestUrl: document.getElementById('ingestUrl'),
+      chatUrl: document.getElementById('chatUrl'),
+      fileIngestUrl: document.getElementById('fileIngestUrl'),
+      docTitle: document.getElementById('docTitle'),
+      docFileName: document.getElementById('docFileName'),
+      docText: document.getElementById('docText'),
+      ingestBtn: document.getElementById('ingestBtn'),
+      docFile: document.getElementById('docFile'),
+      fileIngestBtn: document.getElementById('fileIngestBtn'),
+      statusBox: document.getElementById('statusBox'),
+      conversationId: document.getElementById('conversationId'),
+      messages: document.getElementById('messages'),
+      chatMessage: document.getElementById('chatMessage'),
+      chatBtn: document.getElementById('chatBtn'),
+      clearBtn: document.getElementById('clearBtn'),
+    };
+
+    function setStatus(text, kind = 'ok') {
+      els.statusBox.textContent = text;
+      els.statusBox.className = 'status ' + (kind === 'bad' ? 'bad' : 'ok');
+    }
+
+    function addMessage(role, content, citations = []) {
+      const wrap = document.createElement('div');
+      wrap.className = 'msg ' + (role === 'user' ? 'user' : 'assistant');
+
+      const head = document.createElement('div');
+      head.className = 'head';
+      head.innerHTML = `<span>${role === 'user' ? 'You' : 'Assistant'}</span><span>${new Date().toLocaleString()}</span>`;
+
+      const body = document.createElement('div');
+      body.className = 'content';
+      body.textContent = content;
+
+      wrap.appendChild(head);
+      wrap.appendChild(body);
+
+      if (citations && citations.length) {
+        const cites = document.createElement('div');
+        cites.className = 'citations';
+        citations.forEach(c => {
+          const item = document.createElement('div');
+          item.className = 'citation';
+          item.innerHTML = `<strong>${c.source_id || 'S?'}</strong><br>${c.document_title || c.file_name || 'Source'}${c.page_number ? ` • page ${c.page_number}` : ''}<br><br>${(c.quote || '').slice(0, 240)}`;
+          cites.appendChild(item);
+        });
+        wrap.appendChild(cites);
+      }
+
+      els.messages.appendChild(wrap);
+      els.messages.scrollTop = els.messages.scrollHeight;
+    }
+
+    async function ingestText() {
+      try {
+        setStatus('Ingesting text document...');
+        const res = await fetch(els.ingestUrl.value.trim(), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            title: els.docTitle.value.trim(),
+            file_name: els.docFileName.value.trim(),
+            text: els.docText.value.trim()
+          })
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(JSON.stringify(json));
+        setStatus(`Document indexed: ${json.document_id}`);
+      } catch (err) {
+        setStatus(`Ingest failed: ${err.message}`, 'bad');
+      }
+    }
+
+    async function ingestFile() {
+      try {
+        if (!els.docFile.files.length) throw new Error('Choose a file first');
+        if (!els.fileIngestUrl.value.trim()) throw new Error('Set File Ingest Webhook URL');
+        setStatus('Uploading file for parsing...');
+        const form = new FormData();
+        form.append('file', els.docFile.files[0]);
+        const res = await fetch(els.fileIngestUrl.value.trim(), {
+          method: 'POST',
+          body: form
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(JSON.stringify(json));
+        setStatus(`File indexed: ${json.document_id || 'done'}`);
+      } catch (err) {
+        setStatus(`File ingest failed: ${err.message}`, 'bad');
+      }
+    }
+
+    async function sendChat() {
+      try {
+        const message = els.chatMessage.value.trim();
+        if (!message) throw new Error('Enter a message');
+        addMessage('user', message);
+        setStatus('Sending message...');
+
+        const payload = { message };
+        if (els.conversationId.value.trim()) payload.conversation_id = els.conversationId.value.trim();
+
+        const res = await fetch(els.chatUrl.value.trim(), {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const json = await res.json();
+        if (!res.ok) throw new Error(JSON.stringify(json));
+
+        if (json.conversation_id) els.conversationId.value = json.conversation_id;
+        addMessage('assistant', json.answer || 'No answer returned', json.citations || []);
+        setStatus('Answer received');
+      } catch (err) {
+        setStatus(`Chat failed: ${err.message}`, 'bad');
+      }
+    }
+
+    els.ingestBtn.addEventListener('click', ingestText);
+    els.fileIngestBtn.addEventListener('click', ingestFile);
+    els.chatBtn.addEventListener('click', sendChat);
+    els.clearBtn.addEventListener('click', () => {
+      els.conversationId.value = '';
+      els.messages.innerHTML = '';
+      setStatus('Started a new conversation');
+    });
+  </script>
+</body>
+</html>

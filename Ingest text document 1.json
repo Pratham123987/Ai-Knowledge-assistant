@@ -1,0 +1,359 @@
+{
+  "name": "Ingest text document",
+  "nodes": [
+    {
+      "parameters": {
+        "jsCode": "const raw = $input.first().json;\nconst input = raw.body ?? raw;\n\nconst title = (input.title || 'Untitled Document').trim();\nconst fileName = (input.file_name || 'document.txt').trim();\nconst text = String(input.text || '').trim();\n\nif (!text) {\n  throw new Error('body.text is required');\n}\n\nfunction uuidv4() {\n  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, function(c) {\n    const r = Math.floor(Math.random() * 16);\n    const v = c === 'x' ? r : (r & 0x3 | 0x8);\n    return v.toString(16);\n  });\n}\n\nconst chunkSize = Number(input.chunk_size || 220);\nconst overlap = Number(input.chunk_overlap || 40);\nconst words = text.split(/\\s+/);\nconst documentId = uuidv4();\n\nconst chunks = [];\nlet start = 0;\nlet index = 0;\n\nwhile (start < words.length) {\n  const end = Math.min(start + chunkSize, words.length);\n  const content = words.slice(start, end).join(' ').trim();\n\n  if (content) {\n    chunks.push({\n      document_id: documentId,\n      chunk_index: index,\n      page_number: 1,\n      content,\n    });\n  }\n\n  if (end >= words.length) break;\n  start = Math.max(0, end - overlap);\n  index += 1;\n}\n\nreturn [{\n  json: {\n    document_id: documentId,\n    title,\n    file_name: fileName,\n    text_length: text.length,\n    chunk_count: chunks.length,\n    chunks,\n    summary: `Indexed ${chunks.length} chunk(s)`\n  }\n}];"
+      },
+      "id": "b965986f-5d4d-45a9-b580-309f282e49e2",
+      "name": "Prepare Document + Chunks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        288,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://rfuzcgprywihkahqbmee.supabase.co/rest/v1/documents",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_API_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.SUPABASE_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "={{ JSON.stringify({ id: $json.document_id, title: $json.title, file_name: $json.file_name, status: 'processing', summary: null, metadata: { source: 'n8n-mvp', text_length: $json.text_length, chunk_count: $json.chunk_count } }) }}",
+        "options": {}
+      },
+      "id": "ba0d2aae-bdc3-4c98-8396-dc75506c7537",
+      "name": "Create Document",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        592,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const payload = $('Prepare Document + Chunks').first().json;\nreturn payload.chunks.map(chunk => ({ json: chunk }));"
+      },
+      "id": "aa8891f7-4e22-4002-888e-94813498940d",
+      "name": "Expand Chunks",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        864,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://generativelanguage.googleapis.com/v1beta/models/gemini-embedding-2:embedContent",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "x-goog-api-key",
+              "value": "={{ $env.GOOGLE_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={   \"model\": \"models/gemini-embedding-2\",   \"content\": {     \"parts\": [       {         \"text\": \"{{$json.content}}\"       }     ]   },   \"output_dimensionality\": 1536 }",
+        "options": {}
+      },
+      "id": "4078745f-f2ed-474a-a1fb-93d75fc025ce",
+      "name": "Create Chunk Embedding",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1120,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "POST",
+        "url": "https://rfuzcgprywihkahqbmee.supabase.co/rest/v1/chunks",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_API_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.SUPABASE_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "contentType": "raw",
+        "rawContentType": "application/json",
+        "body": "={   \"document_id\": \"{{$item(0).$node['Expand Chunks'].json.document_id}}\",   \"chunk_index\": {{$item(0).$node['Expand Chunks'].json.chunk_index}},   \"page_number\": {{$item(0).$node['Expand Chunks'].json.page_number}},   \"content\": \"{{$item(0).$node['Expand Chunks'].json.content}}\",  \"embedding\": \"{{JSON.stringify($json.embedding.values)}}\",  \"metadata\": {     \"source\": \"n8n-mvp\"   } }",
+        "options": {}
+      },
+      "id": "6c280f2e-2c52-40a9-9d0d-8d46c98b171f",
+      "name": "Insert Chunk",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1408,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "jsCode": "const prepared = $('Prepare Document + Chunks').first().json;\nreturn [{\n  json: {\n    document_id: prepared.document_id,\n    chunk_count: prepared.chunk_count,\n    summary: prepared.summary\n  }\n}];"
+      },
+      "id": "c901f50a-a11c-40bc-8a26-30c7b752e563",
+      "name": "Finalize Batch",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        1680,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "method": "PATCH",
+        "url": "={{ 'https://rfuzcgprywihkahqbmee.supabase.co/rest/v1/documents?id=eq.' + $json.document_id }}",
+        "sendHeaders": true,
+        "headerParameters": {
+          "parameters": [
+            {
+              "name": "apikey",
+              "value": "={{ $env.SUPABASE_API_KEY }}"
+            },
+            {
+              "name": "Authorization",
+              "value": "Bearer {{ $env.SUPABASE_API_KEY }}"
+            },
+            {
+              "name": "Content-Type",
+              "value": "application/json"
+            },
+            {
+              "name": "Prefer",
+              "value": "return=representation"
+            }
+          ]
+        },
+        "sendBody": true,
+        "specifyBody": "json",
+        "jsonBody": "{\"status\":\"ready\",\"summary\":\"Indexed 1 chunk(s)\"}",
+        "options": {}
+      },
+      "id": "85e331dd-7f20-4dab-8986-5964acbaecfb",
+      "name": "Mark Document Ready",
+      "type": "n8n-nodes-base.httpRequest",
+      "typeVersion": 4.2,
+      "position": [
+        1952,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "httpMethod": "POST",
+        "path": "ka-mvp-ingest-text",
+        "responseMode": "responseNode",
+        "options": {}
+      },
+      "id": "505df9d0-e4db-412d-abde-9c02fd390c42",
+      "name": "Webhook1",
+      "type": "n8n-nodes-base.webhook",
+      "typeVersion": 2,
+      "position": [
+        0,
+        0
+      ],
+      "webhookId": "e32e3aa2-af53-4a01-966c-5ab0893a4f28"
+    },
+    {
+      "parameters": {
+        "jsCode": "const row = Array.isArray($json) ? $json[0] : $json;\nreturn [{\n  json: {\n    status: 'ready',\n    document_id: row.id || $('Finalize Batch').first().json.document_id,\n    title: row.title,\n    file_name: row.file_name,\n    message: 'Document indexed successfully',\n    chunk_count: row.metadata?.chunk_count || $('Finalize Batch').first().json.chunk_count,\n    summary: row.summary || $('Finalize Batch').first().json.summary\n  }\n}];"
+      },
+      "id": "682cb79c-2a7b-4b6d-bf55-f0bad2d2a3be",
+      "name": "Format Response2",
+      "type": "n8n-nodes-base.code",
+      "typeVersion": 2,
+      "position": [
+        2224,
+        0
+      ]
+    },
+    {
+      "parameters": {
+        "respondWith": "json",
+        "responseBody": "={{ $json }}",
+        "options": {}
+      },
+      "id": "93a4db17-3136-4102-a368-0247b5e9539b",
+      "name": "Respond to Webhook2",
+      "type": "n8n-nodes-base.respondToWebhook",
+      "typeVersion": 1,
+      "position": [
+        2480,
+        0
+      ]
+    }
+  ],
+  "pinData": {},
+  "connections": {
+    "Prepare Document + Chunks": {
+      "main": [
+        [
+          {
+            "node": "Create Document",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Document": {
+      "main": [
+        [
+          {
+            "node": "Expand Chunks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Expand Chunks": {
+      "main": [
+        [
+          {
+            "node": "Create Chunk Embedding",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Create Chunk Embedding": {
+      "main": [
+        [
+          {
+            "node": "Insert Chunk",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Insert Chunk": {
+      "main": [
+        [
+          {
+            "node": "Finalize Batch",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Finalize Batch": {
+      "main": [
+        [
+          {
+            "node": "Mark Document Ready",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Mark Document Ready": {
+      "main": [
+        [
+          {
+            "node": "Format Response2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Webhook1": {
+      "main": [
+        [
+          {
+            "node": "Prepare Document + Chunks",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    },
+    "Format Response2": {
+      "main": [
+        [
+          {
+            "node": "Respond to Webhook2",
+            "type": "main",
+            "index": 0
+          }
+        ]
+      ]
+    }
+  },
+  "active": false,
+  "settings": {
+    "executionOrder": "v1",
+    "binaryMode": "separate"
+  },
+  "versionId": "117c676a-7807-43d6-9346-b45e7b021aa8",
+  "meta": {
+    "templateCredsSetupCompleted": false,
+    "instanceId": "f87bb745ef5a1514836c51902fae85c407513b5c7812234e511cae37061c8570",
+    "credentialsLocation": "Environment variables (.env file)",
+    "requiredEnvVars": [
+      "SUPABASE_API_KEY",
+      "GOOGLE_API_KEY"
+    ]
+  },
+  "nodeGroups": [],
+  "id": "X95CsbA7wE5EjR37",
+  "tags": []
+}
